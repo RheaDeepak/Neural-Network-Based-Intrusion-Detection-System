@@ -5,12 +5,10 @@ from typing import List, Dict, Any
 import os
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import MinMaxScaler, LabelEncoder
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.model_selection import train_test_split
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OneHotEncoder
-from sklearn.feature_selection import mutual_info_classif
-from sklearn.decomposition import PCA
-import joblib
 from tensorflow.keras.models import load_model
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -64,17 +62,18 @@ def map_attack(label: str) -> str:
     R2L = ['ftp_write', 'guess_passwd', 'imap', 'multihop', 'named', 'phf', 'sendmail', 'snmpgetattack', 'snmpguess', 'spy', 'warezclient', 'warezmaster', 'xclock', 'xsnoop', 'httptunnel']
     U2R = ['buffer_overflow', 'loadmodule', 'perl', 'ps', 'rootkit', 'sqlattack', 'xterm']
     if label == 'normal':
-        return 'Normal'
+        return 'normal'
     elif label in DOS:
-        return 'DoS'
+        return 'dos'
     elif label in PROBE:
-        return 'Probe'
+        return 'probe'
     elif label in R2L:
-        return 'R2L'
+        return 'r2l'
     elif label in U2R:
-        return 'U2R'
+        return 'u2r'
     else:
-        return 'Normal'
+        # Keep strict 5-class mapping to match the trained model
+        return 'r2l'
 
 
 # Globals populated at startup
@@ -84,12 +83,10 @@ le = None
 model = None
 classes = None
 insights_cache = None
-selected_indices = None
-pca = None
 
 
 def startup_processing():
-    global preprocessor, num_cols, le, model, classes, insights_cache, selected_indices, pca
+    global preprocessor, num_cols, le, model, classes, insights_cache
 
     # Load raw datasets and fit preprocessor and label encoder so we can handle unseen inputs
     if not os.path.exists(TRAIN_PATH) or not os.path.exists(TEST_PATH):
@@ -98,57 +95,54 @@ def startup_processing():
     train_df = pd.read_csv(TRAIN_PATH, names=COMPREHENSIVE_COLS)
     test_df = pd.read_csv(TEST_PATH, names=COMPREHENSIVE_COLS)
 
-    train_df['is_train'] = 1
-    test_df['is_train'] = 0
     combined_df = pd.concat([train_df, test_df], ignore_index=True)
     combined_df.drop('difficulty', axis=1, inplace=True)
 
-    # Map labels and keep for label encoder
+    # Map labels
     combined_df['mapped_label'] = combined_df['label'].apply(map_attack)
+
+    # Label encoder/classes (must match training label space)
     le = LabelEncoder()
     le.fit(combined_df['mapped_label'].values)
     classes = list(le.classes_)
 
-    # Determine numeric columns (exclude is_train)
-    num_cols = [col for col in combined_df.columns if col not in cat_cols and col not in ('is_train', 'label', 'mapped_label')]
+    # Build X/y and split exactly like training preprocessing
+    X_df = combined_df.drop(['label', 'mapped_label'], axis=1)
+    y_encoded = le.transform(combined_df['mapped_label'].values)
 
-    artifacts_path = os.path.join(DATA_DIR, "preprocess_artifacts.joblib")
-    if os.path.exists(artifacts_path):
-        artifacts = joblib.load(artifacts_path)
-        preprocessor = artifacts["preprocessor"]
-        selected_indices = artifacts["selected_indices"]
-        pca = artifacts["pca"]
-        classes = list(artifacts["classes"])
-    else:
-        # Fit preprocessor
-        preprocessor = ColumnTransformer(
-            transformers=[
-                ('num', MinMaxScaler(), num_cols),
-                ('cat', OneHotEncoder(sparse_output=False, handle_unknown='ignore'), cat_cols)
-            ]
-        )
+    num_cols = [col for col in X_df.columns if col not in cat_cols]
 
-        # Fit on the combined dataframe (drop columns not used)
-        preprocessor.fit(combined_df.drop(['label', 'mapped_label'], axis=1))
+    X_train_df, _, _, _ = train_test_split(
+        X_df,
+        y_encoded,
+        test_size=0.2,
+        random_state=42,
+        stratify=y_encoded
+    )
 
-        # Transform and compute MI + PCA on training data
-        X_full = preprocessor.transform(combined_df.drop(['label', 'mapped_label'], axis=1))
-        is_train_mask = combined_df['is_train'] == 1
-        X_train = X_full[is_train_mask]
-        y_train = le.transform(combined_df.loc[is_train_mask, 'mapped_label'])
+    # Fit preprocessor
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ('num', StandardScaler(), num_cols),
+            ('cat', OneHotEncoder(sparse_output=False, handle_unknown='ignore'), cat_cols)
+        ]
+    )
 
-        mi_scores = mutual_info_classif(X_train, y_train, random_state=42)
-        top_k = max(20, int(0.8 * X_train.shape[1]))
-        selected_indices = np.argsort(mi_scores)[::-1][:top_k]
-        X_train = X_train[:, selected_indices]
-
-        pca = PCA(n_components=0.95, random_state=42)
-        pca.fit(X_train)
+    # Fit on train split only to mirror training pipeline
+    preprocessor.fit(X_train_df)
 
     # Load model
     if not os.path.exists(MODEL_PATH):
         raise RuntimeError(f"Model file not found at {MODEL_PATH}. Please train or place the Keras model there.")
-    model = load_model(MODEL_PATH, compile=False)
+    model = load_model(MODEL_PATH)
+
+    # Verify feature dimensionality against model input
+    expected_dim = int(model.input_shape[-1]) if model and model.input_shape else None
+    actual_dim = preprocessor.transform(X_train_df.head(1)).shape[1]
+    if expected_dim is not None and actual_dim != expected_dim:
+        raise RuntimeError(
+            f"Preprocessor output dimension mismatch. Model expects {expected_dim}, backend produced {actual_dim}."
+        )
 
     # Build insights
     mapped_labels = combined_df['mapped_label']
@@ -159,7 +153,7 @@ def startup_processing():
 
     # Model summary info
     param_count = int(model.count_params())
-    input_dim = int(model.input_shape[-1]) if model and model.input_shape else None
+    input_dim = expected_dim
 
     insights_cache = {
         "total_samples": total_samples,
@@ -222,13 +216,14 @@ def predict(batch: BatchSamples):
     try:
         df = validate_and_df(samples)
         X = preprocessor.transform(df)
-        if selected_indices is not None:
-            X = X[:, selected_indices]
-        if pca is not None:
-            X = pca.transform(X)
         preds_proba = model.predict(X)
         pred_idx = np.argmax(preds_proba, axis=1)
         pred_labels = [classes[i] for i in pred_idx]
+
+        if preds_proba.shape[1] != len(classes):
+            raise RuntimeError(
+                f"Class/probability mismatch: model returned {preds_proba.shape[1]} probs but backend has {len(classes)} classes."
+            )
 
         results = []
         for i, s in enumerate(samples):

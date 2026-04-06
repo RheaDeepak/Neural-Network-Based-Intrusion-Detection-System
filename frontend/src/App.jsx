@@ -32,7 +32,12 @@ export default function App() {
     results.forEach(r => { counts[r.predicted_class] = (counts[r.predicted_class] || 0) + 1 })
     return {
       labels: Object.keys(counts),
-      datasets: [{ data: Object.values(counts), backgroundColor: ['#4caf50','#f44336','#ff9800','#2196f3','#9c27b0'] }]
+      datasets: [{
+        data: Object.values(counts),
+        backgroundColor: ['#E07A5F', '#81B29A', '#F2CC8F', '#F4F1DE', '#3D405B'],
+        borderColor: '#2F3148',
+        borderWidth: 2
+      }]
     }
   }
 
@@ -41,25 +46,27 @@ export default function App() {
     datasets: [{
       label: 'Samples',
       data: Object.values(insights.label_distribution || {}),
-      backgroundColor: '#38bdf8'
+      backgroundColor: ['#E07A5F', '#81B29A', '#F2CC8F', '#F4F1DE', '#3D405B']
     }]
   } : null
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900">
+    <div className="min-h-screen bg-gradient-to-b from-[#3D405B] via-[#343752] to-[#2F3148]">
       <div className="max-w-6xl mx-auto px-6 py-10">
         <header className="mb-10">
-          <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-muted">
+          <div className="inline-flex items-center gap-2 rounded-full border border-[#F2CC8F]/40 bg-[#E07A5F]/25 px-3 py-1 text-xs text-[#F4F1DE] shadow-glow">
             Neural intrusion detection
           </div>
-          <h1 className="text-4xl font-semibold mt-4 text-foreground">Intrusion Detection Command Center</h1>
+          <h1 className="text-4xl font-semibold mt-4 text-foreground bg-gradient-to-r from-[#F4F1DE] via-[#F2CC8F] to-[#81B29A] bg-clip-text text-transparent">
+            Intrusion Detection Command Center
+          </h1>
           <p className="text-muted mt-2 max-w-2xl">
             Upload or enter samples to classify network activity. Explore model insights and dataset patterns in one place.
           </p>
         </header>
 
         <section className="grid md:grid-cols-3 gap-6 mb-8">
-          <Card className="md:col-span-2 shadow-glow">
+          <Card className="md:col-span-2 shadow-glow border-[#E07A5F]/35 bg-[#3D405B]/70 backdrop-blur-sm">
             <CardHeader>
               <CardTitle>Predict from new samples</CardTitle>
               <CardDescription>Fill the form or paste CSV/JSON to batch classify traffic.</CardDescription>
@@ -69,7 +76,7 @@ export default function App() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="border-[#81B29A]/35 bg-[#2F3148]/80 shadow-glowCyan backdrop-blur-sm">
             <CardHeader>
               <CardTitle>Model insights</CardTitle>
               <CardDescription>Quick stats from the training dataset and ANN.</CardDescription>
@@ -101,7 +108,7 @@ export default function App() {
         </section>
 
         {results && (
-          <Card className="mb-8">
+          <Card className="mb-8 border-[#F2CC8F]/35 bg-[#2F3148]/80 backdrop-blur-sm">
             <CardHeader>
               <CardTitle>Predictions</CardTitle>
               <CardDescription>Summary table and probability breakdown.</CardDescription>
@@ -110,7 +117,7 @@ export default function App() {
               <div className="grid xl:grid-cols-[1.3fr_1fr] gap-6">
                 <div className="overflow-auto rounded-lg border border-white/10">
                   <table className="w-full text-sm">
-                    <thead className="bg-white/5 text-muted">
+                    <thead className="bg-[#E07A5F]/20 text-[#F4F1DE]">
                       <tr>
                         <th className="px-3 py-2 text-left">#</th>
                         <th className="px-3 py-2 text-left">Predicted class</th>
@@ -125,7 +132,7 @@ export default function App() {
                         const probs = row.probabilities || {}
                         const best = probs[row.predicted_class] ?? 0
                         return (
-                          <tr key={idx} className="hover:bg-white/5">
+                          <tr key={idx} className="hover:bg-[#81B29A]/15">
                             <td className="px-3 py-2 text-muted">{idx + 1}</td>
                             <td className="px-3 py-2 font-semibold text-foreground">{row.predicted_class}</td>
                             <td className="px-3 py-2 text-muted">{(best * 100).toFixed(2)}%</td>
@@ -138,7 +145,7 @@ export default function App() {
                     </tbody>
                   </table>
                 </div>
-                <div className="rounded-lg border border-white/10 bg-black/20 p-4">
+                <div className="rounded-lg border border-[#81B29A]/35 bg-[#3D405B]/70 p-4">
                   {pieData() && <Pie data={pieData()} />}
                 </div>
               </div>
@@ -147,7 +154,7 @@ export default function App() {
         )}
 
         {insightsBar && (
-          <Card>
+          <Card className="border-[#F2CC8F]/35 bg-[#3D405B]/70 backdrop-blur-sm">
             <CardHeader>
               <CardTitle>Dataset label distribution</CardTitle>
               <CardDescription>Class balance across the combined dataset.</CardDescription>

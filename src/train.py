@@ -11,7 +11,7 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 MODELS_DIR = os.path.join(BASE_DIR, "models")
 PLOTS_DIR = os.path.join(BASE_DIR, "plots")
 
-def train_model(use_class_weight=False):
+def train_model(use_class_weight=True):
     if not os.path.exists(MODELS_DIR):
         os.makedirs(MODELS_DIR)
     if not os.path.exists(PLOTS_DIR):
@@ -42,7 +42,7 @@ def train_model(use_class_weight=False):
 
     class_weight = None
     if use_class_weight:
-        print("Computing class weights...")
+        print("Computing class weights (enabled by default)...")
         unique_classes = np.unique(y_train)
         weights = compute_class_weight(
             class_weight='balanced',

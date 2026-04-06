@@ -114,7 +114,7 @@ export default function InputForm({ onPredict }) {
   return (
     <form onSubmit={submit} className="space-y-6">
       {samples.map((s, idx) => (
-        <div className="rounded-lg border border-white/10 bg-black/30 p-4" key={idx}>
+  <div className="rounded-lg border border-[#E07A5F]/30 bg-[#3D405B]/65 p-4" key={idx}>
           <div className="flex justify-between items-center mb-3">
             <h3 className="font-semibold text-foreground">Sample #{idx+1}</h3>
             <Button type="button" variant="ghost" size="sm" onClick={() => removeSample(idx)}>Remove</Button>
@@ -155,7 +155,7 @@ export default function InputForm({ onPredict }) {
         <Button type="submit">Predict</Button>
       </div>
 
-      <div className="rounded-lg border border-white/10 bg-black/30 p-4">
+  <div className="rounded-lg border border-[#81B29A]/30 bg-[#2F3148]/70 p-4">
         <h4 className="font-semibold mb-2 text-foreground">Bulk input (CSV or JSON)</h4>
         <p className="text-xs text-muted mb-3">
           Paste a JSON array of objects or CSV with headers. Any missing fields will default to 0.

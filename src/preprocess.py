@@ -96,8 +96,15 @@ def preprocess_data(imbalance_method='smote', random_state=42):
     X_test = preprocessor.transform(X_test_df)
 
     if imbalance_method.lower() == 'smote':
-        print("Applying SMOTE for multi-class imbalance handling...")
-        smote = SMOTE(random_state=random_state)
+        print("Applying targeted SMOTE for U2R class...")
+        if 'u2r' not in le.classes_:
+            raise ValueError("'u2r' class not found in label encoder classes; cannot apply targeted SMOTE.")
+
+        u2r_idx = int(le.transform(['u2r'])[0])
+        smote_strategy = {u2r_idx: 2000}
+        print(f"SMOTE sampling_strategy={smote_strategy} (class index for 'u2r')")
+
+        smote = SMOTE(random_state=random_state, sampling_strategy=smote_strategy)
         X_train, y_train = smote.fit_resample(X_train, y_train)
 
     print(f"Train shapes: X={X_train.shape}, y={y_train.shape}")
