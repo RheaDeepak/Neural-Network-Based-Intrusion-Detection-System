@@ -3,7 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from tensorflow.keras.models import load_model
-from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score
+from sklearn.preprocessing import label_binarize
 
 # Paths
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -35,7 +36,17 @@ def evaluate_and_alert():
     y_pred = np.argmax(y_pred_probs, axis=1)
 
     print("\n--- Classification Report ---")
-    print(classification_report(y_test, y_pred, target_names=classes))
+    print(classification_report(y_test, y_pred, target_names=classes, zero_division=0))
+
+    print("\n--- ROC-AUC (One-vs-Rest) ---")
+    num_classes = len(classes)
+    y_test_bin = label_binarize(y_test, classes=np.arange(num_classes))
+    overall_auc = roc_auc_score(y_test_bin, y_pred_probs, average='macro', multi_class='ovr')
+    print(f"Macro ROC-AUC (OvR): {overall_auc:.4f}")
+
+    for i, cls in enumerate(classes):
+        class_auc = roc_auc_score(y_test_bin[:, i], y_pred_probs[:, i])
+        print(f"  {cls}: {class_auc:.4f}")
 
     print("Generating Confusion Matrix plot...")
     if not os.path.exists(PLOTS_DIR):
@@ -54,7 +65,7 @@ def evaluate_and_alert():
 
     print("\n--- Simulating Real-time Alert Mechanism ---")
     # Identify indices of predictions that are classified as Attack (i.e. not 'Normal')
-    normal_idx = list(classes).index('Normal') if 'Normal' in classes else -1
+    normal_idx = list(classes).index('normal') if 'normal' in classes else -1
     
     alert_count = 0
     max_alerts_to_show = 10
