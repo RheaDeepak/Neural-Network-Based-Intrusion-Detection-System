@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+from sklearn.utils.class_weight import compute_class_weight
 from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping
 from model import build_model
 
@@ -10,7 +11,7 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 MODELS_DIR = os.path.join(BASE_DIR, "models")
 PLOTS_DIR = os.path.join(BASE_DIR, "plots")
 
-def train_model():
+def train_model(use_class_weight=True):
     if not os.path.exists(MODELS_DIR):
         os.makedirs(MODELS_DIR)
     if not os.path.exists(PLOTS_DIR):
@@ -27,7 +28,6 @@ def train_model():
     y_train = data['y_train']
     classes = data['classes']
     
-    # We will use part of the train data for validation (e.g. 20%)
     input_dim = X_train.shape[1]
     num_classes = len(classes)
     
@@ -38,16 +38,28 @@ def train_model():
     
     # Callbacks
     checkpoint = ModelCheckpoint(model_path, monitor='val_accuracy', save_best_only=True, mode='max', verbose=1)
-    # Added Early Stopping to prevent long training times
-    early_stop = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
+    early_stop = EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True)
+
+    class_weight = None
+    if use_class_weight:
+        print("Computing class weights (enabled by default)...")
+        unique_classes = np.unique(y_train)
+        weights = compute_class_weight(
+            class_weight='balanced',
+            classes=unique_classes,
+            y=y_train
+        )
+        class_weight = {int(c): float(w) for c, w in zip(unique_classes, weights)}
+        print(f"Using class_weight: {class_weight}")
 
     print("Starting training...")
     history = model.fit(
         X_train, y_train,
         validation_split=0.2,
-        epochs=5,
+        epochs=20,
         batch_size=256,
-        callbacks=[checkpoint, early_stop]
+        callbacks=[checkpoint, early_stop],
+        class_weight=class_weight
     )
 
     # Plotting

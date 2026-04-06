@@ -1,8 +1,10 @@
 import os
 import pandas as pd
 import numpy as np
+from imblearn.over_sampling import SMOTE
 from sklearn.preprocessing import StandardScaler, LabelEncoder, OneHotEncoder
 from sklearn.compose import ColumnTransformer
+from sklearn.model_selection import train_test_split
 
 # Paths
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -27,7 +29,7 @@ COMPREHENSIVE_COLS = [
     "dst_host_srv_rerror_rate", "label", "difficulty"
 ]
 
-# Attack categories mapping
+# Attack categories mapping (5 classes only)
 DOS = ['apache2', 'back', 'land', 'mailbomb', 'neptune', 'pod', 'processtable', 'smurf', 'teardrop', 'udpstorm', 'worm']
 PROBE = ['ipsweep', 'mscan', 'nmap', 'portsweep', 'saint', 'satan']
 R2L = ['ftp_write', 'guess_passwd', 'imap', 'multihop', 'named', 'phf', 'sendmail', 'snmpgetattack', 'snmpguess', 'spy', 'warezclient', 'warezmaster', 'xclock', 'xsnoop', 'httptunnel']
@@ -35,27 +37,25 @@ U2R = ['buffer_overflow', 'loadmodule', 'perl', 'ps', 'rootkit', 'sqlattack', 'x
 
 def map_attack(label):
     if label == 'normal':
-        return 'Normal'
+        return 'normal'
     elif label in DOS:
-        return 'DoS'
+        return 'dos'
     elif label in PROBE:
-        return 'Probe'
+        return 'probe'
     elif label in R2L:
-        return 'R2L'
+        return 'r2l'
     elif label in U2R:
-        return 'U2R'
+        return 'u2r'
     else:
-        # Fallback to general attack if unknown
-        return 'Unknown_Attack'
+        # Fallback: keep 5-class requirement by grouping unknown attacks into r2l
+        return 'r2l'
 
-def preprocess_data():
+def preprocess_data(imbalance_method='smote', random_state=42):
     print("Loading datasets...")
     train_df = pd.read_csv(TRAIN_PATH, names=COMPREHENSIVE_COLS)
     test_df = pd.read_csv(TEST_PATH, names=COMPREHENSIVE_COLS)
 
-    # Combine for consistent encoding
-    train_df['is_train'] = 1
-    test_df['is_train'] = 0
+    # Combine and perform stratified split as requested
     combined_df = pd.concat([train_df, test_df], ignore_index=True)
 
     # Drop difficulty as it's not a real feature
@@ -63,49 +63,62 @@ def preprocess_data():
 
     # Map labels
     combined_df['mapped_label'] = combined_df['label'].apply(map_attack)
-    combined_df.drop('label', axis=1, inplace=True)
+    y = combined_df['mapped_label'].values
+    X_df = combined_df.drop(['label', 'mapped_label'], axis=1)
 
-    # Separate features and labels
-    y_full = combined_df['mapped_label'].values
-    combined_df.drop('mapped_label', axis=1, inplace=True)
-
-    # Categorical columns
+    # Categorical and numerical columns
     cat_cols = ['protocol_type', 'service', 'flag']
-    num_cols = [col for col in combined_df.columns if col not in cat_cols and col != 'is_train']
+    num_cols = [col for col in X_df.columns if col not in cat_cols]
+
+    # Label encode targets
+    le = LabelEncoder()
+    y_encoded = le.fit_transform(y)
+    print(f"Classes mapped: {le.classes_}")
+
+    # Stratified split
+    X_train_df, X_test_df, y_train, y_test = train_test_split(
+        X_df, y_encoded,
+        test_size=0.2,
+        random_state=random_state,
+        stratify=y_encoded
+    )
 
     print("Encoding and scaling features...")
-    # Setup standard scaler for numeric features and one-hot encoder for categorical
+    # Fit transform on train and transform test
     preprocessor = ColumnTransformer(
         transformers=[
             ('num', StandardScaler(), num_cols),
             ('cat', OneHotEncoder(sparse_output=False, handle_unknown='ignore'), cat_cols)
-        ])
+        ]
+    )
 
-    X_full = preprocessor.fit_transform(combined_df)
-    
-    # Label Encoding for targets
-    le = LabelEncoder()
-    y_full_encoded = le.fit_transform(y_full)
-    print(f"Classes mapped: {le.classes_}")
+    X_train = preprocessor.fit_transform(X_train_df)
+    X_test = preprocessor.transform(X_test_df)
 
-    # Split back to train and test
-    is_train_mask = combined_df['is_train'] == 1
-    
-    X_train = X_full[is_train_mask]
-    y_train = y_full_encoded[is_train_mask]
-    
-    X_test = X_full[~is_train_mask]
-    y_test = y_full_encoded[~is_train_mask]
+    if imbalance_method.lower() == 'smote':
+        print("Applying targeted SMOTE for U2R class...")
+        if 'u2r' not in le.classes_:
+            raise ValueError("'u2r' class not found in label encoder classes; cannot apply targeted SMOTE.")
+
+        u2r_idx = int(le.transform(['u2r'])[0])
+        smote_strategy = {u2r_idx: 2000}
+        print(f"SMOTE sampling_strategy={smote_strategy} (class index for 'u2r')")
+
+        smote = SMOTE(random_state=random_state, sampling_strategy=smote_strategy)
+        X_train, y_train = smote.fit_resample(X_train, y_train)
 
     print(f"Train shapes: X={X_train.shape}, y={y_train.shape}")
     print(f"Test shapes: X={X_test.shape}, y={y_test.shape}")
 
     # Save processed data
-    print("Saving processed data...")
+    print("Saving processed data and metadata...")
     np.savez(os.path.join(DATA_DIR, "processed_data.npz"), 
              X_train=X_train, y_train=y_train, 
              X_test=X_test, y_test=y_test,
-             classes=le.classes_)
+             classes=le.classes_,
+             cat_cols=np.array(cat_cols, dtype=object),
+             num_cols=np.array(num_cols, dtype=object),
+             imbalance_method=imbalance_method)
     
     print("Preprocessing completed successfully.")
 

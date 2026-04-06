@@ -1,5 +1,5 @@
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Dropout
+from tensorflow.keras.layers import Dense, Dropout, Input
 from tensorflow.keras.optimizers import Adam
 
 def build_model(input_dim, num_classes=5):
@@ -7,12 +7,11 @@ def build_model(input_dim, num_classes=5):
     Builds the Artificial Neural Network for Intrusion Detection.
     """
     model = Sequential([
-        Dense(128, activation='relu', input_shape=(input_dim,)),
+        Input(shape=(input_dim,)),
+        Dense(128, activation='relu'),
         Dropout(0.3),
         Dense(64, activation='relu'),
         Dropout(0.3),
-        Dense(32, activation='relu'),
-        # Output layer with softmax for multi-class classification
         Dense(num_classes, activation='softmax')
     ])
     
